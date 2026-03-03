@@ -1,0 +1,13 @@
+# Foundry
+out/
+cache/
+
+# Dependencies (installed via forge install)
+lib/
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
