@@ -17,11 +17,6 @@ import "./interfaces/IAdapter.sol";
  *
  * Invariant (must always hold):
  * userIdleCollateral + userAllocatedToGMX + userAllocatedToVertex = userTotalDeposited
- *
- * Week 4 Updates:
- * - Vault now transfers collateral TO adapter before openMarketLong (matches real GMX flow)
- * - closeMarketLong uses market+collateral+direction, not positionKey (matches real GMX)
- * - Position struct tracks market address for closing
  */
 contract UMIPVault {
     using SafeERC20 for IERC20;
@@ -211,8 +206,6 @@ contract UMIPVault {
             userAllocatedToGainsTrade[msg.sender] += collateralAmount;
         }
 
-        // Determine market address (in production, this would be configurable)
-        // GMX uses market token addresses, Vertex uses productIds converted to addresses
         address market = _getDefaultMarket(platform);
 
         // Transfer collateral to adapter, then call openMarketLong
@@ -263,7 +256,6 @@ contract UMIPVault {
         address adapter = _getAdapter(position.platform);
         if (adapter == address(0)) revert AdapterNotSet(position.platform);
 
-        // Call adapter to close (uses market+collateral+direction, not positionKey)
         _callAdapterClose(
             adapter,
             position.market,
@@ -271,8 +263,7 @@ contract UMIPVault {
         );
 
         // Move collateral from allocated back to idle
-        // Note: In real implementation, this would include PnL from adapter
-        uint256 returnedAmount = position.collateralAmount; // Mock: return same amount
+        uint256 returnedAmount = position.collateralAmount;
 
         if (position.platform == Platform.GMX) {
             userAllocatedToGMX[msg.sender] -= position.collateralAmount;
@@ -348,7 +339,6 @@ contract UMIPVault {
 
     /**
      * @notice Get default market for a platform
-     * @dev In production, this would be configurable per position
      */
     function _getDefaultMarket(Platform platform) internal view returns (address) {
         address configured = defaultMarket[platform];
@@ -365,7 +355,6 @@ contract UMIPVault {
 
     /**
      * @notice Transfer collateral to adapter and call openMarketLong
-     * @dev This matches the real GMX flow where adapter transfers to OrderVault
      */
     function _callAdapterOpen(
         address adapter,
@@ -374,11 +363,8 @@ contract UMIPVault {
         uint256 sizeDeltaUsd,
         uint256 acceptablePrice
     ) internal {
-        // Step 1: Transfer collateral from vault to adapter
-        // The adapter will then transfer to OrderVault (GMX) or its internal accounting (Vertex)
         collateralToken.safeTransfer(adapter, collateralAmount);
 
-        // Step 2: Call adapter's openMarketLong
         IAdapter(adapter).openMarketLong{value: msg.value}(
             market,
             collateralAmount,
@@ -391,14 +377,12 @@ contract UMIPVault {
 
     /**
      * @notice Call adapter to close position
-     * @dev Uses market+collateral+direction (no positionKey) - matches real GMX
      */
     function _callAdapterClose(
         address adapter,
         address market,
         uint256 sizeDeltaUsd
     ) internal {
-        // Close uses market+collateralToken+isLong to identify position (GMX V2 pattern)
         IAdapter(adapter).closeMarketLong{value: msg.value}(
             market,
             address(collateralToken),
