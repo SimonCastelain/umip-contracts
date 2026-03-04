@@ -9,24 +9,11 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * @notice gTrade v10 adapter for Arbitrum Mainnet
  * @dev Implements IAdapter interface for UMIP vault integration
  *
- * Execution Pattern:
- *   1. Approve Diamond to pull collateral via transferFrom
- *   2. Call openTrade() with v10 Trade struct
- *   No multicall, no OrderVault, no ETH execution fee.
+ * Opening: approve Diamond, call openTrade() with v10 Trade struct. No ETH fee required.
+ * Closing: query getTrades(address(this)) on-chain and close by pairIndex.
+ *          Trade indices are assigned asynchronously at oracle fulfillment.
  *
- * Trade Index Resolution:
- *   gTrade assigns trade indices asynchronously (at oracle fulfillment, not at openTrade time).
- *   To close, we query getTrades(address(this)) on-chain and find the trade by pairIndex.
- *   No off-chain relay needed.
- *
- * Selector Verification (Feb 2026):
- *   openTrade:       0x5bfcc4f8 (confirmed on Arb Sepolia)
- *   closeTradeMarket: 0x36ce736b (confirmed on Arb Sepolia)
- *   getTrades:        0x4bfad7c0 (confirmed on Arb Sepolia)
- *
- * v10 Trade Struct Corrections (from selector decode):
- *   positionSizeToken is uint160 (not uint120)
- *   __placeholder is uint24 (not uint48)
+ * v10 Trade struct field types: positionSizeToken is uint160, __placeholder is uint24
  */
 contract GTradeAdapter is IAdapter {
     // ============================================
@@ -90,15 +77,11 @@ contract GTradeAdapter is IAdapter {
     ) external payable override returns (bytes32 orderKey) {
         if (!marketConfigured[market]) revert MarketNotConfigured(market);
 
-        // Step 1: Approve Diamond to pull collateral
         IERC20(collateralToken).approve(DIAMOND, collateralAmount);
 
-        // Step 2: Derive leverage from sizeDeltaUsd / collateralUsd
-        // sizeDeltaUsd is 30 decimals, USDC collateral is 6 decimals
-        // leverage (3 decimals): sizeDeltaUsd * 1000 / (collateralAmount * 1e24)
+        // leverage in 3-decimal units: sizeDeltaUsd (30 dec) * 1000 / collateralAmount (6 dec) / 1e24
         uint24 leverage = uint24((sizeDeltaUsd * 1000) / (uint256(collateralAmount) * 1e24));
 
-        // Step 3: Build v10 Trade struct
         IGNSDiamond.Trade memory trade = IGNSDiamond.Trade({
             user: address(this),
             index: 0,                                         // auto-assigned at execution
@@ -117,8 +100,7 @@ contract GTradeAdapter is IAdapter {
             __placeholder: 0                                  // uint24
         });
 
-        // Step 4: Call openTrade (no msg.value needed — gTrade has no ETH execution fee)
-        IGNSDiamond(DIAMOND).openTrade(trade, 1000, address(0)); // 10% max slippage, no referrer
+        IGNSDiamond(DIAMOND).openTrade(trade, 1000, address(0)); // 10% max slippage
 
         emit OrderCreated(address(this), marketToPairIndex[market], collateralAmount, true);
 
@@ -161,14 +143,9 @@ contract GTradeAdapter is IAdapter {
 
 // ============================================
 // gTrade v10 Diamond Interface
-// Validated against Arbitrum Sepolia (Feb 2026)
-// openTrade selector:       0x5bfcc4f8
-// closeTradeMarket selector: 0x36ce736b
-// getTrades selector:        0x4bfad7c0
 // ============================================
 
 interface IGNSDiamond {
-    // v10 Trade struct — field types confirmed from selector decode
     struct Trade {
         address user;              // address(this) for contract integration
         uint32 index;              // 0 for new trades (auto-assigned at execution)
@@ -183,8 +160,8 @@ interface IGNSDiamond {
         uint64 tp;                 // Take profit (10 decimals, 0=none)
         uint64 sl;                 // Stop loss (10 decimals, 0=none)
         bool isCounterTrade;       // false for normal trades
-        uint160 positionSizeToken; // 0 for new trades (CORRECTED: uint160 not uint120)
-        uint24 __placeholder;      // Must be 0 (CORRECTED: uint24 not uint48)
+        uint160 positionSizeToken; // 0 for new trades
+        uint24 __placeholder;      // must be 0
     }
 
     struct Counter {
