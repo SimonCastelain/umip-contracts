@@ -133,6 +133,7 @@ contract MarginManager {
 
             totalCollateral += collateralAmount;
 
+            // Convert size to 6 decimals (sizeDeltaUsd uses GMX's 30-decimal format)
             uint256 sizeIn6Decimals = sizeDeltaUsd / 1e24;
             uint256 marginBps = _getMarginBps(platform);
             uint256 requiredMargin = (sizeIn6Decimals * marginBps) / BPS;
