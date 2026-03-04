@@ -14,7 +14,6 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * Execution fee sent via sendWnt which wraps ETH and deposits to OrderVault.
  *
  * Interface matches GMX V2.2+ with autoCancel and dataList fields.
- * Verified contract addresses from gmx-synthetics/deployments/arbitrumSepolia (Feb 2026)
  */
 contract GMXAdapterSepolia is IAdapter {
     // ============================================
@@ -25,7 +24,7 @@ contract GMXAdapterSepolia is IAdapter {
     address public constant ROUTER = 0x72F13a44C8ba16a678CAD549F17bc9e06d2B8bD2;
 
     // Testnet token addresses
-    address public constant USDC = 0x3321Fd36aEaB0d5CdfD26F4A3A93E2D2aAcCB99f;
+    address public constant USDC = 0x3321Fd36aEaB0d5CdfD26f4A3A93E2D2aAcCB99f;
     address public constant WETH = 0x980B62Da83eFf3D4576C647993b0c1D7faf17c73;
 
     // Market addresses
@@ -56,11 +55,9 @@ contract GMXAdapterSepolia is IAdapter {
     ) external payable override returns (bytes32 orderKey) {
         if (msg.value < executionFee) revert InsufficientExecutionFee();
 
-        // Step 1: Transfer collateral directly to OrderVault (bypasses ROUTER_PLUGIN)
         bool success = IERC20(collateralToken).transfer(ORDER_VAULT, collateralAmount);
         if (!success) revert TokenTransferFailed();
 
-        // Step 2: Use multicall to sendWnt (execution fee) + createOrder
         IGMXExchangeRouter.CreateOrderParams memory params = _buildOrderParams(
             msg.sender,
             market,
@@ -112,14 +109,12 @@ contract GMXAdapterSepolia is IAdapter {
     ) internal returns (bytes32 orderKey) {
         bytes[] memory multicallData = new bytes[](2);
 
-        // Call 1: sendWnt — wraps ETH and sends WETH to OrderVault
         multicallData[0] = abi.encodeWithSelector(
             IGMXExchangeRouter.sendWnt.selector,
             ORDER_VAULT,
             executionFee
         );
 
-        // Call 2: createOrder
         multicallData[1] = abi.encodeWithSelector(
             IGMXExchangeRouter.createOrder.selector,
             params
@@ -174,7 +169,7 @@ contract GMXAdapterSepolia is IAdapter {
 }
 
 // ============================================
-// GMX V2.2+ Interface (matches deployed contracts Feb 2026)
+// GMX V2.2+ Interface
 // ============================================
 
 interface IGMXExchangeRouter {
