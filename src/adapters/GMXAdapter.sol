@@ -3,15 +3,8 @@ pragma solidity ^0.8.20;
 
 /**
  * @title GMXAdapter
- * @notice UMIP Week 1: GMX V2 integration adapter
- * @dev Implements the GMX multicall pattern for opening/closing positions
- *
- * Pattern (from gmx-synthetics tests):
- * 1. ExchangeRouter.multicall([sendWnt(...), createOrder(...)])
- * 2. Send ETH for execution fee as msg.value
- * 3. Keeper executes order asynchronously
- *
- * This adapter replicates the EXACT pattern from successful GMX tests.
+ * @notice GMX V2 integration adapter (Arbitrum Mainnet)
+ * @dev Uses multicall pattern: ExchangeRouter.multicall([sendWnt(...), createOrder(...)])
  */
 contract GMXAdapter {
     // ============================================
@@ -53,16 +46,10 @@ contract GMXAdapter {
         // Validate execution fee
         if (msg.value < executionFee) revert InsufficientExecutionFee();
 
-        // Approve ExchangeRouter to spend collateral tokens
-        // This is needed because sendTokens will use transferFrom
         IERC20(collateralToken).approve(EXCHANGE_ROUTER, collateralAmount);
 
-        // Build multicall data
         bytes[] memory multicallData = new bytes[](2);
 
-        // Step 1: Send collateral tokens to OrderVault
-        // Use sendTokens for all ERC20 tokens (including WETH)
-        // Note: sendWnt is for wrapping native ETH, not for transferring WETH
         multicallData[0] = abi.encodeWithSignature(
             "sendTokens(address,address,uint256)",
             collateralToken,
@@ -70,7 +57,6 @@ contract GMXAdapter {
             collateralAmount
         );
 
-        // Step 2: Create order parameters
         IExchangeRouter.CreateOrderParams memory params = IExchangeRouter.CreateOrderParams({
             addresses: IExchangeRouter.CreateOrderParamsAddresses({
                 receiver: msg.sender,
