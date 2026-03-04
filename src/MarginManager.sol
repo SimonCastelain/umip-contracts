@@ -15,8 +15,6 @@ import "./UMIPVault.sol";
  *
  * Uses basis points (10000 = 100%) for precision without floating point.
  * Health factor of 15000 = 150% = 1.5x collateralized.
- *
- * Week 4 Day 3-4: Read-only monitoring, no automation.
  */
 contract MarginManager {
     // ============================================
@@ -135,9 +133,6 @@ contract MarginManager {
 
             totalCollateral += collateralAmount;
 
-            // Required margin = position size * maintenance margin rate
-            // sizeDeltaUsd is in 30 decimals, collateral in 6 decimals
-            // Convert size to 6 decimals: sizeDeltaUsd / 1e24
             uint256 sizeIn6Decimals = sizeDeltaUsd / 1e24;
             uint256 marginBps = _getMarginBps(platform);
             uint256 requiredMargin = (sizeIn6Decimals * marginBps) / BPS;
